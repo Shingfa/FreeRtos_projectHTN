@@ -1,6 +1,0 @@
-../Core/Src/bme280.c:16:16:BME280_Read8	1
-../Core/Src/bme280.c:22:13:BME280_ReadCalibrationData	1
-../Core/Src/bme280.c:52:9:BME280_Init	2
-../Core/Src/bme280.c:68:9:BME280_ReadTemperature	1
-../Core/Src/bme280.c:82:9:BME280_ReadPressure	2
-../Core/Src/bme280.c:106:9:BME280_ReadHumidity	1
