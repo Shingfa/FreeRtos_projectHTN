@@ -69,7 +69,7 @@ TimerHandle_t TimerBaoDong;     // Hẹn giờ tắt còi báo động PIR sau 5
 
 int nguongKhiGas = 1200;        // Ngưỡng khí Gas mặc định
 uint8_t cheDoCaiDat = 0;        // Cờ chuyển đổi giữa Màn hình chính và Màn hình Cài đặt
-volatile uint8_t pir_alarm = 0; // Biến toàn cục theo dõi trạng thái báo động từ PIR
+volatile uint8_t pir_alarm = 0; // Biến toàn cục theo dõi trạng thái từ PIR
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -252,34 +252,33 @@ void Task_HienThi_DieuKhien(void *p) {
             if(msgNutNhan == NUT_QUAT) {
                 quat_thu_cong = !quat_thu_cong;
             }
-            update_lcd = true; // Bấm nút là vẽ lại LCD ngay
+            update_lcd = true; // Bấm nút là reset LCD
         }
+        // ====================================================================
+                // 2 & 3. NHẬN DỮ LIỆU CẢM BIẾN VÀ ĐIỀU KHIỂN ĐỒNG BỘ
+                // ====================================================================
+                if(xQueueReceive(QueueCamBien, &duLieu, pdMS_TO_TICKS(50)) == pdPASS) {
 
-        // ====================================================================
-        // 2. NHẬN DỮ LIỆU CẢM BIẾN (Chỉ cập nhật LED & Còi ở đây)
-        // ====================================================================
-        if(xQueueReceive(QueueCamBien, &duLieu, pdMS_TO_TICKS(50)) == pdPASS) {
-            if(duLieu.khiGas > nguongKhiGas || pir_alarm) {
-                HAL_GPIO_WritePin(GPIOB, GPIO_PIN_15, GPIO_PIN_SET);
-                HAL_GPIO_WritePin(GPIOA, GPIO_PIN_11, GPIO_PIN_RESET);
-            } else {
-                HAL_GPIO_WritePin(GPIOB, GPIO_PIN_15, GPIO_PIN_RESET);
-                HAL_GPIO_WritePin(GPIOA, GPIO_PIN_11, GPIO_PIN_SET);
-            }
-            update_lcd = true;
-        }
+                    // Gom điều kiện bật quạt vào một biến
+                    bool dieu_kien_quat = (duLieu.khiGas > nguongKhiGas || duLieu.nhietDo > 40.0f || quat_thu_cong);
 
-        // ====================================================================
-		// 3. ĐIỀU KHIỂN RƠ LE NGAY LẬP TỨC
-		// ====================================================================
-		if(duLieu.khiGas > nguongKhiGas || quat_thu_cong) {
-			// Đã đổi sang GPIO_PIN_RESET vì cắm jumper ở L
-			HAL_GPIO_WritePin(GPIOA, GPIO_PIN_3, GPIO_PIN_RESET);
-		} else {
-			// Tắt rơ le bằng mức CAO
-			HAL_GPIO_WritePin(GPIOA, GPIO_PIN_3, GPIO_PIN_SET);
-		}
-        // ====================================================================
+                    // Đèn đỏ bật khi: Quạt chạy HOẶC có cảnh báo PIR
+                    if(dieu_kien_quat || pir_alarm) {
+                        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_15, GPIO_PIN_SET);
+                        HAL_GPIO_WritePin(GPIOA, GPIO_PIN_11, GPIO_PIN_RESET);
+                    } else {
+                        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_15, GPIO_PIN_RESET);
+                        HAL_GPIO_WritePin(GPIOA, GPIO_PIN_11, GPIO_PIN_SET);
+                    }
+
+                    // Điều khiển Rơ-le quạt (Low-level trigger)
+                    if(dieu_kien_quat) {
+                        HAL_GPIO_WritePin(GPIOA, GPIO_PIN_3, GPIO_PIN_RESET); // BẬT QUẠT
+                    } else {
+                        HAL_GPIO_WritePin(GPIOA, GPIO_PIN_3, GPIO_PIN_SET);   // TẮT QUẠT
+                    }
+                    update_lcd = true;
+                }
         // 4. HIỂN THỊ LÊN MÀN HÌNH LCD
         // ====================================================================
         if(update_lcd) {
@@ -393,11 +392,22 @@ static void MX_GPIO_Init(void) {
   __HAL_RCC_AFIO_CLK_ENABLE();
   __HAL_AFIO_REMAP_SWJ_NOJTAG();
 
-  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_3|GPIO_PIN_11, GPIO_PIN_RESET);
+  // ĐẶT TRẠNG THÁI BAN ĐẦU: PA3 LÀ SET (TẮT QUẠT), PA11 LÀ RESET (LED XANH SÁNG)
+  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_3, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_11, GPIO_PIN_RESET);
+
   HAL_GPIO_WritePin(GPIOB, GPIO_PIN_15|GPIO_PIN_3, GPIO_PIN_RESET);
   HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET);
 
-  GPIO_InitStruct.Pin = GPIO_PIN_3|GPIO_PIN_11;
+  // CẤU HÌNH PA3: OPEN-DRAIN (OD) ĐỂ ĐIỀU KHIỂN RELAY 5V
+  GPIO_InitStruct.Pin = GPIO_PIN_3;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_OD;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+  // CẤU HÌNH PA11: PUSH-PULL (PP) CHO LED XANH
+  GPIO_InitStruct.Pin = GPIO_PIN_11;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
